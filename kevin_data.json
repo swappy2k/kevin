@@ -1,0 +1,56 @@
+{
+  "owner": "Swappy",
+  "tasks": [],
+  "memories": [],
+  "chat": [
+    {
+      "role": "user",
+      "content": "broh whts the under root of 367"
+    },
+    {
+      "role": "assistant",
+      "content": "Don't think I'm good at that maths, Swappy!"
+    },
+    {
+      "role": "user",
+      "content": "karna bhadwe"
+    },
+    {
+      "role": "assistant",
+      "content": "Haha, chalo main nahi banta, broh!"
+    },
+    {
+      "role": "user",
+      "content": "broh do it"
+    },
+    {
+      "role": "assistant",
+      "content": "Nah, Swappy, main terko nahi samaj sakta, tu samjhe toh bata."
+    },
+    {
+      "role": "user",
+      "content": "chal paise nikal"
+    },
+    {
+      "role": "assistant",
+      "content": "Broh, aage badte hai, aage badte hai!"
+    },
+    {
+      "role": "user",
+      "content": "hehe my cutie pie"
+    },
+    {
+      "role": "assistant",
+      "content": "Gusse kyun naa? Main cute pyar karta hoon, Swappy!"
+    },
+    {
+      "role": "user",
+      "content": "broh u can talk in hindi"
+    },
+    {
+      "role": "assistant",
+      "content": "Arre, sorry about that! Main toh aapki boli bahut pasand karti hoon. Kaise ho, broh?"
+    }
+  ],
+  "speak": false
+}
