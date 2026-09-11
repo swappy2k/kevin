@@ -1,0 +1,12 @@
+[
+  {
+    "id": 1,
+    "title": "Dentist",
+    "starts_at": "2026-09-10T14:30:00"
+  },
+  {
+    "id": 2,
+    "title": "Test Meeting",
+    "starts_at": "2026-09-10T15:00:00"
+  }
+]
