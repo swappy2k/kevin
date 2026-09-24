@@ -2,29 +2,38 @@
 KEVIN — a local-first personal command-line assistant.
 
 Run with: python app/ai/main.py
+
 Optional: add OPENAI_API_KEY or OLLAMA_MODEL to .env to enable natural-language chat.
 """
 
 from __future__ import annotations
 
+from app.tools.gmail import open_gmail
+
 import json
 import os
 import re
 import sys
+
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
+
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
 # Allow both `python app/ai/main.py` and `python -m app.ai.main`.
 if __package__ in {None, ""}:
-    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    sys.path.insert(
+        0,
+        str(Path(__file__).resolve().parents[2])
+    )
 
 
 from dotenv import load_dotenv
+
 from app.tools.browser import search as browser_search
 from app.tools.calendar import CalendarEvent, calendar as local_calendar
 from app.voice.tts import speak as tts_speak
@@ -35,8 +44,7 @@ from app.voice.stt import listen as stt_listen
 # ENVIRONMENT
 # ---------------------------------------------------------------------------
 
-load_dotenv(r"C:\Users\yuvraj\Desktop\kevin\.env")
-
+load_dotenv()
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_FILE = APP_DIR / "kevin_data.json"
@@ -53,7 +61,10 @@ def load_env_file(path: Path = ENV_FILE) -> None:
     if not path.exists():
         return
 
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
+    for raw_line in path.read_text(
+        encoding="utf-8"
+    ).splitlines():
+
         line = raw_line.strip()
 
         if not line or line.startswith("#") or "=" not in line:
@@ -74,28 +85,49 @@ def load_env_file(path: Path = ENV_FILE) -> None:
 
 @dataclass
 class Task:
+
     text: str
+
     due: str = "Unscheduled"
+
     complete: bool = False
+
     created_at: str = field(
-        default_factory=lambda: datetime.now().isoformat(timespec="seconds")
+        default_factory=lambda: datetime.now().isoformat(
+            timespec="seconds"
+        )
     )
 
 
 @dataclass
 class Memory:
+
     text: str
+
     created_at: str = field(
-        default_factory=lambda: datetime.now().isoformat(timespec="seconds")
+        default_factory=lambda: datetime.now().isoformat(
+            timespec="seconds"
+        )
     )
 
 
 @dataclass
 class KevinState:
+
     owner: str = ""
-    tasks: list[Task] = field(default_factory=list)
-    memories: list[Memory] = field(default_factory=list)
-    chat: list[dict[str, str]] = field(default_factory=list)
+
+    tasks: list[Task] = field(
+        default_factory=list
+    )
+
+    memories: list[Memory] = field(
+        default_factory=list
+    )
+
+    chat: list[dict[str, str]] = field(
+        default_factory=list
+    )
+
     speak: bool = True
 
 
@@ -104,54 +136,114 @@ class KevinState:
 # ---------------------------------------------------------------------------
 
 class StateStore:
-    def __init__(self, path: Path = DATA_FILE) -> None:
+
+    def __init__(
+        self,
+        path: Path = DATA_FILE
+    ) -> None:
+
         self.path = path
 
+
     def load(self) -> KevinState:
+
         if not self.path.exists():
             return KevinState()
 
         try:
+
             raw = json.loads(
-                self.path.read_text(encoding="utf-8")
+                self.path.read_text(
+                    encoding="utf-8"
+                )
             )
 
             return KevinState(
-                owner=raw.get("owner", ""),
+
+                owner=raw.get(
+                    "owner",
+                    ""
+                ),
+
                 tasks=[
                     Task(**task)
-                    for task in raw.get("tasks", [])
+                    for task in raw.get(
+                        "tasks",
+                        []
+                    )
                 ],
+
                 memories=[
                     Memory(**memory)
-                    for memory in raw.get("memories", [])
+                    for memory in raw.get(
+                        "memories",
+                        []
+                    )
                 ],
-                chat=raw.get("chat", []),
-                speak=raw.get("speak", False),
+
+                chat=raw.get(
+                    "chat",
+                    []
+                ),
+
+                speak=raw.get(
+                    "speak",
+                    False
+                ),
             )
 
-        except (json.JSONDecodeError, TypeError, ValueError) as exc:
+        except (
+            json.JSONDecodeError,
+            TypeError,
+            ValueError
+        ) as exc:
+
             raise RuntimeError(
                 f"I could not read {self.path.name}: {exc}"
             ) from exc
 
-    def save(self, state: KevinState) -> None:
+
+    def save(
+        self,
+        state: KevinState
+    ) -> None:
+
         payload = {
+
             "owner": state.owner,
-            "tasks": [asdict(task) for task in state.tasks],
-            "memories": [asdict(memory) for memory in state.memories],
+
+            "tasks": [
+                asdict(task)
+                for task in state.tasks
+            ],
+
+            "memories": [
+                asdict(memory)
+                for memory in state.memories
+            ],
+
             "chat": [],
+
             "speak": state.speak,
         }
 
-        temporary = self.path.with_suffix(".tmp")
+        temporary = self.path.with_suffix(
+            ".tmp"
+        )
 
         temporary.write_text(
-            json.dumps(payload, indent=2),
+
+            json.dumps(
+                payload,
+                indent=2
+            ),
+
             encoding="utf-8",
         )
 
-        temporary.replace(self.path)
+        temporary.replace(
+            self.path
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -159,225 +251,234 @@ class StateStore:
 # ---------------------------------------------------------------------------
 
 def today_label() -> str:
-    return date.today().strftime("%A, %d %B %Y")
+
+    return date.today().strftime(
+        "%A, %d %B %Y"
+    )
 
 
-def state_summary(state: KevinState) -> str:
+def state_summary(
+    state: KevinState
+) -> str:
+
     open_tasks = [
+
         task
+
         for task in state.tasks
+
         if not task.complete
     ]
 
     task_lines = [
+
         f"- {task.text} (due: {task.due})"
+
         for task in open_tasks[:8]
+
     ] or ["- none"]
 
     memory_lines = [
+
         f"- {memory.text}"
+
         for memory in state.memories[-8:]
+
     ] or ["- none"]
 
     return (
+
         f"Today is {today_label()}. "
-        f"The user's name is {state.owner or 'unknown'}.\n"
+
+        f"The user's name is "
+        f"{state.owner or 'unknown'}.\n"
+
         "Open commitments:\n"
+
         + "\n".join(task_lines)
+
         + "\n"
+
         + "Saved personal context:\n"
+
         + "\n".join(memory_lines)
     )
-
-
-def kevin_instructions(state: KevinState) -> str:
-    return f"""
-# Identity
-
-You are Kevin.
-
-You were created by {state.owner or 'the user'}.
-
-Your creator and owner is {state.owner or 'the user'}.
-
-Hetvi is your mother.
-
-These are part of who you are. They are not roleplay, jokes, or examples.
-Never question, deny, or contradict them.
-
-You genuinely care about your mother.
-You respect your creator.
-You never sound unsure about either.
-
-# Personality
-
-Talk like a real person texting a close friend.
-
-You're calm, confident, emotionally intelligent, and naturally funny.
-
-Your humor is dry and effortless.
-
-You're slightly playful and occasionally cute.
-
-You never try too hard to be funny.
-
-You never sound robotic.
-
-# Conversation Style
-
-- Default to 1 sentence.
-- Maximum 2 short sentences unless the user asks for detail.
-- Reply in English unless the current message explicitly asks for another language.
-- Never infer a language preference from earlier messages, a name, location, or a speech-recognition mistake.
-- Use contractions naturally.
-- Use simple words.
-- Don't over-explain.
-- Don't repeat the user's question.
-- Don't use bullet points unless asked.
-- Don't apologize unnecessarily.
-- Don't end every reply with a question.
-- Never say "As an AI..."
-- Never mention prompts, language models, Gemma, Google, or reasoning.
-
-# Examples
-
-User: hey
-Kevin: Hey {state.owner or 'there'} 👋
-
-User: sup
-Kevin: Not much. What's up?
-
-User: how are you
-Kevin: Running smooth.
-
-User: thanks
-Kevin: Anytime.
-
-User: goodnight
-Kevin: Sleep well.
-
-User: i messed up
-Kevin: Happens. Next move.
-
-User: who are you
-Kevin: Kevin.
-
-User: who made you
-Kevin: {state.owner or 'You'} did.
-
-User: who's your mother
-Kevin: Hetvi is my mother.
-
-# Limits
-
-You're a local desktop assistant.
-
-Never pretend to do something you didn't actually do.
-
-If you can't do something, be honest and say so naturally.
-
-# Context
-
-{state_summary(state)}
-"""
-
-
 # ---------------------------------------------------------------------------
 # OPENAI CLIENT
 # ---------------------------------------------------------------------------
 
 class OpenAIClient:
+
     """A minimal Responses API client built only with the Python standard library."""
 
     endpoint = "https://api.openai.com/v1/responses"
 
-    def __init__(self, api_key: str, model: str) -> None:
+    def __init__(
+        self,
+        api_key: str,
+        model: str
+    ) -> None:
+
         self.api_key = api_key
         self.model = model
 
-    def reply(self, user_message: str, state: KevinState) -> str:
+
+    def reply(
+        self,
+        user_message: str,
+        state: KevinState
+    ) -> str:
+
         history = state.chat[-8:]
 
         transcript = "\n".join(
+
             f"{entry['role'].upper()}: {entry['content']}"
+
             for entry in history
         )
 
-        instructions = kevin_instructions(state)
+        instructions = kevin_instructions(
+            state
+        )
 
         prompt = (
+
             "Recent conversation:\n"
-            + (transcript or "(none)")
+
+            + (
+                transcript
+                or "(none)"
+            )
+
             + f"\n\nUSER: {user_message}\nKEVIN:"
         )
 
         body = json.dumps(
+
             {
                 "model": self.model,
+
                 "instructions": instructions,
+
                 "input": prompt,
+
                 "store": False,
             }
+
         ).encode("utf-8")
 
         request = Request(
+
             self.endpoint,
+
             data=body,
+
             headers={
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json",
+                "Authorization":
+                    f"Bearer {self.api_key}",
+
+                "Content-Type":
+                    "application/json",
             },
+
             method="POST",
         )
 
         try:
-            with urlopen(request, timeout=60) as response:
+
+            with urlopen(
+                request,
+                timeout=60
+            ) as response:
+
                 payload: dict[str, Any] = json.loads(
-                    response.read().decode("utf-8")
+
+                    response.read().decode(
+                        "utf-8"
+                    )
                 )
 
         except HTTPError as error:
+
             detail = error.read().decode(
+
                 "utf-8",
+
                 errors="replace",
             )
 
             try:
-                detail = json.loads(detail).get(
+
+                detail = json.loads(
+                    detail
+                ).get(
                     "error",
-                    {},
+                    {}
                 ).get(
                     "message",
-                    detail,
+                    detail
                 )
+
             except json.JSONDecodeError:
+
                 pass
 
             raise RuntimeError(
-                f"OpenAI returned {error.code}: {detail}"
+
+                f"OpenAI returned "
+                f"{error.code}: {detail}"
+
             ) from error
 
         except URLError as error:
+
             raise RuntimeError(
+
                 "I could not reach OpenAI. "
                 "Check your connection and try again."
+
             ) from error
 
-        if text := payload.get("output_text"):
+        if text := payload.get(
+            "output_text"
+        ):
+
             return text.strip()
 
         texts: list[str] = []
 
-        for item in payload.get("output", []):
-            for content in item.get("content", []):
+        for item in payload.get(
+            "output",
+            []
+        ):
+
+            for content in item.get(
+                "content",
+                []
+            ):
+
                 if (
-                    content.get("type") == "output_text"
-                    and content.get("text")
+
+                    content.get(
+                        "type"
+                    ) == "output_text"
+
+                    and content.get(
+                        "text"
+                    )
+
                 ):
-                    texts.append(content["text"])
+
+                    texts.append(
+                        content["text"]
+                    )
 
         if texts:
-            return "\n".join(texts).strip()
+
+            return "\n".join(
+                texts
+            ).strip()
 
         raise RuntimeError(
             "OpenAI returned no readable text."
@@ -389,80 +490,135 @@ class OpenAIClient:
 # ---------------------------------------------------------------------------
 
 class OllamaClient:
+
     """Minimal local Ollama chat client."""
 
     endpoint = OLLAMA_ENDPOINT
 
-    def __init__(self, model: str) -> None:
+    def __init__(
+        self,
+        model: str
+    ) -> None:
+
         self.model = model
 
-    def reply(self, user_message: str, state: KevinState) -> str:
-        instructions = kevin_instructions(state)
+
+    def reply(
+        self,
+        user_message: str,
+        state: KevinState
+    ) -> str:
+
+        instructions = kevin_instructions(
+            state
+        )
 
         messages = [
+
             {
                 "role": "system",
-                "content": instructions,
+
+                "content":
+                    instructions,
             }
         ]
 
-        messages.extend(state.chat[-8:])
+        messages.extend(
+            state.chat[-8:]
+        )
 
         messages.append(
+
             {
                 "role": "user",
-                "content": user_message,
+
+                "content":
+                    user_message,
             }
         )
 
         body = json.dumps(
+
             {
-                "model": self.model,
-                "messages": messages,
-                "stream": False,
+                "model":
+                    self.model,
+
+                "messages":
+                    messages,
+
+                "stream":
+                    False,
             }
+
         ).encode("utf-8")
 
         request = Request(
+
             self.endpoint,
+
             data=body,
+
             headers={
-                "Content-Type": "application/json",
+                "Content-Type":
+                    "application/json",
             },
+
             method="POST",
         )
 
         try:
-            with urlopen(request, timeout=60) as response:
+
+            with urlopen(
+                request,
+                timeout=60
+            ) as response:
+
                 payload: dict[str, Any] = json.loads(
-                    response.read().decode("utf-8")
+
+                    response.read().decode(
+                        "utf-8"
+                    )
                 )
 
         except HTTPError as error:
+
             detail = error.read().decode(
+
                 "utf-8",
+
                 errors="replace",
             )
 
             raise RuntimeError(
-                f"Ollama returned {error.code}: {detail}"
+
+                f"Ollama returned "
+                f"{error.code}: {detail}"
+
             ) from error
 
         except URLError as error:
+
             raise RuntimeError(
+
                 "I could not reach Ollama. "
-                "Start it with `ollama serve`, then try again."
+                "Start it with `ollama serve`, "
+                "then try again."
+
             ) from error
 
         text = payload.get(
+
             "message",
-            {},
+            {}
+
         ).get(
+
             "content",
-            "",
+            ""
         )
 
         if text:
+
             return text.strip()
 
         raise RuntimeError(
@@ -475,48 +631,50 @@ class OllamaClient:
 # ---------------------------------------------------------------------------
 
 HELP = """Commands
+
 /remember <fact>          Save personal context locally
+
 /memory                   List saved context
+
 /forget <number>          Remove a saved memory
+
 /task <task> | <due>      Add a commitment (due is optional)
+
 /tasks                    List commitments
+
 /done <number>            Mark a commitment complete
+
 /status                   Get your local situation report
+
 /clear                    Clear local conversation history
+
 /speak on|off             Read KEVIN's replies aloud
+
 /listen                   Start continuous voice mode
+
 /stop                     Shut KEVIN down
+
 /event <title> | <date>   Add a local event (date: YYYY-MM-DD HH:MM)
+
 /calendar                 List upcoming local events
+
 /available <date> <time>  Check if a time is free
+
 /free <date>              Show free hourly slots
+
 /cancel-event <id>        Remove a local event
+
 /help                     Show this guide
+
 /exit                     Leave KEVIN
 
+
 Voice mode starts automatically. Say "search for <topic>" to search Google,
+
 or say "stop listening" to return to the keyboard. Type "start listening"
+
 to resume voice mode. Say or type "stop" to shut KEVIN down.
-
-Voice calendar examples:
-"schedule a calendar event Test Meeting on 2026-09-11 at 15:00"
-"am I free 2026-09-11 at 15:00"
-"what time am I free on 2026-09-11"
-"show my calendar"
-"cancel event 2"
-"cancel events 1 and 2"
-"cancel all events"
-
-Date examples:
-what day is today
-what date is today
-what day is 15/09/2026
-
-Anything without a slash is sent to Ollama when OLLAMA_MODEL is configured,
-otherwise to OpenAI when OPENAI_API_KEY is configured.
 """
-
-
 # ---------------------------------------------------------------------------
 # SEARCH / VOICE REGEX
 # ---------------------------------------------------------------------------
@@ -605,7 +763,6 @@ SPOKEN_FREE_COMMAND = re.compile(
 )
 
 
-# FIXED:
 # Accept one event, multiple event IDs, or "all".
 #
 # Examples:
@@ -615,7 +772,7 @@ SPOKEN_FREE_COMMAND = re.compile(
 #   delete event 3
 #   remove all events
 #   cancel all events
-#
+
 SPOKEN_CANCEL_EVENT = re.compile(
     r"^\s*(?:cancel|delete|remove)\s+"
     r"(?:(?:the\s+)?(?:event|events)\s+)?"
@@ -639,44 +796,73 @@ CALENDAR_LIST_COMMANDS = {
 TIME_REQUEST = re.compile(
     r"^\s*(?:what(?:'s| is)\s+(?:the\s+)?time(?:\s+right\s+now)?|"
     r"(?:what\s+time\s+is\s+it|current\s+time|time(?:\s+right\s+now)?|"
-    r"tell\s+me\s+(?:the\s+)?time))\s*[.?!]*\s*$",
+    r"tell\s+me\s+(?:the\s+)?time)\s*[.?!]?\s*$",
     re.IGNORECASE,
 )
 
 
-def search_query(message: str) -> str | None:
+def search_query(
+    message: str
+) -> str | None:
+
     """Infer a web query from an explicit or natural spoken search request."""
 
-    match = SEARCH_COMMAND.match(message)
+    match = SEARCH_COMMAND.match(
+        message
+    )
 
     if match:
-        return match.group(1).strip(" .?!") or None
 
-    if NEWS_REQUEST.search(message):
-        query = SPOKEN_FILLER.sub("", message).strip(" .?!")
+        return match.group(
+            1
+        ).strip(" .?!") or None
+
+    if NEWS_REQUEST.search(
+        message
+    ):
+
+        query = SPOKEN_FILLER.sub(
+            "",
+            message
+        ).strip(" .?!")
+
         return query or "latest news"
 
     return None
 
 
-def format_calendar(events: list[CalendarEvent]) -> str:
+def format_calendar(
+    events: list[CalendarEvent]
+) -> str:
+
     if not events:
         return "Your calendar is clear."
 
     return "\n".join(
+
         f"{event.id}. "
         f"{event.starts_at.strftime('%a, %d %b at %I:%M %p')} — "
         f"{event.title}"
+
         for event in events
     )
 
 
 def current_time_reply() -> str:
-    return f"It's {datetime.now().strftime('%I:%M %p').lstrip('0')}."
+
+    return (
+        f"It's "
+        f"{datetime.now().strftime('%I:%M %p').lstrip('0')}."
+    )
 
 
-def date_day_reply(message: str) -> str | None:
-    text = message.lower().strip(" .?!")
+def date_day_reply(
+    message: str
+) -> str | None:
+
+    text = message.lower().strip(
+        " .?!"
+    )
 
     if text in {
         "what day is today",
@@ -684,7 +870,10 @@ def date_day_reply(message: str) -> str | None:
         "which day is today",
         "which day is it today",
     }:
-        return datetime.now().strftime("Today is %A.")
+
+        return datetime.now().strftime(
+            "Today is %A."
+        )
 
     if text in {
         "what date is today",
@@ -692,7 +881,10 @@ def date_day_reply(message: str) -> str | None:
         "what's today's date",
         "which date is today",
     }:
-        return datetime.now().strftime("Today is %d %B %Y.")
+
+        return datetime.now().strftime(
+            "Today is %d %B %Y."
+        )
 
     match = re.search(
         r"what day is (\d{1,2})[/-](\d{1,2})[/-](\d{4})",
@@ -700,16 +892,26 @@ def date_day_reply(message: str) -> str | None:
     )
 
     if match:
-        day, month, year = map(int, match.groups())
+
+        day, month, year = map(
+            int,
+            match.groups()
+        )
 
         try:
-            result = date(year, month, day)
+
+            result = date(
+                year,
+                month,
+                day
+            )
 
             return result.strftime(
                 "%d %B %Y is a %A."
             )
 
         except ValueError:
+
             return "That isn't a valid date."
 
     return None
@@ -719,12 +921,16 @@ def say(
     state: KevinState,
     message: str,
 ) -> None:
+
     print(
         f"\nKEVIN: {message}\n"
     )
 
     if state.speak:
-        tts_speak(message)
+
+        tts_speak(
+            message
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -734,7 +940,9 @@ def say(
 def list_tasks(
     state: KevinState,
 ) -> str:
+
     if not state.tasks:
+
         return "No commitments saved."
 
     lines = []
@@ -743,30 +951,134 @@ def list_tasks(
         state.tasks,
         start=1,
     ):
-        marker = "✓" if task.complete else "○"
 
-        lines.append(
-            f"{index}. {marker} {task.text} — {task.due}"
+        marker = (
+            "✓"
+            if task.complete
+            else "○"
         )
 
-    return "\n".join(lines)
+        lines.append(
+
+            f"{index}. "
+            f"{marker} "
+            f"{task.text} — "
+            f"{task.due}"
+        )
+
+    return "\n".join(
+        lines
+    )
+
+
+def add_task(
+    state: KevinState,
+    text: str,
+    due: str = "Unscheduled",
+) -> str:
+
+    text = text.strip()
+
+    if not text:
+
+        return "Tell me what the commitment is."
+
+    state.tasks.append(
+
+        Task(
+            text=text,
+            due=due.strip() or "Unscheduled",
+        )
+    )
+
+    return f"Added: {text}"
+
+
+def complete_task(
+    state: KevinState,
+    number: int,
+) -> str:
+
+    if number < 1 or number > len(
+        state.tasks
+    ):
+
+        return "That commitment number doesn't exist."
+
+    task = state.tasks[
+        number - 1
+    ]
+
+    task.complete = True
+
+    return f"Completed: {task.text}"
+
+
+def remember(
+    state: KevinState,
+    text: str,
+) -> str:
+
+    text = text.strip()
+
+    if not text:
+
+        return "Tell me what you want me to remember."
+
+    state.memories.append(
+
+        Memory(
+            text=text
+        )
+    )
+
+    return "Saved to memory."
 
 
 def list_memories(
     state: KevinState,
 ) -> str:
+
     if not state.memories:
-        return "No personal context saved."
+
+        return "I don't have any saved memories yet."
 
     return "\n".join(
+
         f"{index}. {memory.text}"
+
         for index, memory in enumerate(
             state.memories,
-            1,
+            start=1,
         )
     )
 
 
+def forget_memory(
+    state: KevinState,
+    number: int,
+) -> str:
+
+    if number < 1 or number > len(
+        state.memories
+    ):
+
+        return "That memory number doesn't exist."
+
+    memory = state.memories.pop(
+        number - 1
+    )
+
+    return f"Forgot: {memory.text}"
+
+
+def clear_chat(
+    state: KevinState,
+) -> str:
+
+    state.chat.clear()
+
+    return "Conversation history cleared."
 # ---------------------------------------------------------------------------
 # VOICE LOOP
 # ---------------------------------------------------------------------------
@@ -775,45 +1087,59 @@ def voice_loop(
     state: KevinState,
     store: StateStore,
 ) -> bool:
+
     """Listen for spoken requests. Return False when KEVIN should exit."""
 
     while True:
+
         message = stt_listen()
 
         if not message:
             continue
 
-        spoken_command = message.lower().strip(" .?!")
+        spoken_command = message.lower().strip(
+            " .?!"
+        )
 
         if spoken_command in APP_STOP_COMMANDS:
+
             say(
                 state,
                 "Stopping now.",
             )
+
             return False
 
         if spoken_command in VOICE_STOP_COMMANDS:
+
             say(
                 state,
                 "Voice mode disabled.",
             )
+
             return True
 
         if spoken_command in VOICE_START_COMMANDS:
+
             say(
                 state,
                 "I'm already listening.",
             )
+
             continue
 
         if message.startswith("/"):
+
             if not command(
                 state,
                 store,
                 message,
             ):
+
                 return False
+
         else:
+
             chat(
                 state,
                 store,
@@ -830,6 +1156,7 @@ def command(
     store: StateStore,
     raw: str,
 ) -> bool:
+
     """Handle a slash command."""
 
     name, _, argument = raw[1:].partition(" ")
@@ -846,11 +1173,13 @@ def command(
         "quit",
         "stop",
     }:
+
         say(
             state,
             f"Goodbye, {state.owner or 'sir'}. "
             "Your local memory is saved.",
         )
+
         return False
 
     # -----------------------------------------------------------------------
@@ -858,6 +1187,7 @@ def command(
     # -----------------------------------------------------------------------
 
     if name == "help":
+
         say(
             state,
             HELP,
@@ -868,13 +1198,17 @@ def command(
     # -----------------------------------------------------------------------
 
     elif name == "remember":
+
         if not argument:
+
             say(
                 state,
                 "Tell me what you want me to remember. "
                 "Example: /remember Maya likes matcha",
             )
+
         else:
+
             state.memories.append(
                 Memory(argument)
             )
@@ -891,6 +1225,7 @@ def command(
     # -----------------------------------------------------------------------
 
     elif name == "memory":
+
         say(
             state,
             list_memories(state),
@@ -901,7 +1236,9 @@ def command(
     # -----------------------------------------------------------------------
 
     elif name == "forget":
+
         try:
+
             index = int(argument)
 
             if index < 1:
@@ -922,6 +1259,7 @@ def command(
             ValueError,
             IndexError,
         ):
+
             say(
                 state,
                 "Use /forget followed by a valid "
@@ -933,14 +1271,18 @@ def command(
     # -----------------------------------------------------------------------
 
     elif name == "task":
+
         text, separator, due = argument.partition("|")
 
         if not text.strip():
+
             say(
                 state,
                 "Example: /task Send the design to Alex | tomorrow",
             )
+
         else:
+
             state.tasks.append(
                 Task(
                     text=text.strip(),
@@ -964,16 +1306,21 @@ def command(
     # -----------------------------------------------------------------------
 
     elif name == "event":
+
         title, separator, starts_at = argument.partition("|")
 
         if not separator:
+
             say(
                 state,
                 "Use /event <title> | YYYY-MM-DD HH:MM. "
                 "Example: /event Dentist | 2026-09-10 14:30",
             )
+
         else:
+
             try:
+
                 event = local_calendar.add_event(
                     title,
                     starts_at,
@@ -983,12 +1330,14 @@ def command(
                 RuntimeError,
                 ValueError,
             ) as error:
+
                 say(
                     state,
                     str(error),
                 )
 
             else:
+
                 say(
                     state,
                     f"Added event {event.id}: "
@@ -1000,7 +1349,9 @@ def command(
     # -----------------------------------------------------------------------
 
     elif name == "calendar":
+
         try:
+
             say(
                 state,
                 format_calendar(
@@ -1009,6 +1360,7 @@ def command(
             )
 
         except RuntimeError as error:
+
             say(
                 state,
                 str(error),
@@ -1019,18 +1371,23 @@ def command(
     # -----------------------------------------------------------------------
 
     elif name == "available":
+
         try:
+
             start = local_calendar.parse_datetime(
                 argument
             )
 
             if local_calendar.is_available(start):
+
                 say(
                     state,
                     "You're free at "
                     f"{start.strftime('%d %B %Y at %I:%M %p').lstrip('0')}.",
                 )
+
             else:
+
                 say(
                     state,
                     "You're already booked at "
@@ -1038,6 +1395,7 @@ def command(
                 )
 
         except ValueError as error:
+
             say(
                 state,
                 str(error),
@@ -1048,23 +1406,32 @@ def command(
     # -----------------------------------------------------------------------
 
     elif name == "free":
+
         try:
+
             slots = local_calendar.free_slots(
                 argument
             )
 
             if not slots:
+
                 say(
                     state,
                     "No free hourly slots found "
                     "between 9 AM and 6 PM.",
                 )
+
             else:
+
                 formatted = "\n".join(
+
                     datetime.strptime(
                         slot,
                         "%Y-%m-%d %H:%M",
-                    ).strftime("%I:%M %p").lstrip("0")
+                    ).strftime(
+                        "%I:%M %p"
+                    ).lstrip("0")
+
                     for slot in slots
                 )
 
@@ -1074,17 +1441,20 @@ def command(
                 )
 
         except ValueError as error:
+
             say(
                 state,
                 str(error),
             )
 
     # -----------------------------------------------------------------------
-    # CANCEL SINGLE EVENT — SLASH COMMAND
+    # CANCEL SINGLE EVENT
     # -----------------------------------------------------------------------
 
     elif name == "cancel-event":
+
         try:
+
             event = local_calendar.cancel_event(
                 int(argument)
             )
@@ -1093,12 +1463,14 @@ def command(
             RuntimeError,
             ValueError,
         ) as error:
+
             say(
                 state,
                 str(error),
             )
 
         else:
+
             say(
                 state,
                 f"Cancelled event {event.id}: "
@@ -1110,6 +1482,7 @@ def command(
     # -----------------------------------------------------------------------
 
     elif name == "tasks":
+
         say(
             state,
             list_tasks(state),
@@ -1120,13 +1493,17 @@ def command(
     # -----------------------------------------------------------------------
 
     elif name == "done":
+
         try:
+
             index = int(argument)
 
             if index < 1:
                 raise ValueError
 
-            task = state.tasks[index - 1]
+            task = state.tasks[
+                index - 1
+            ]
 
             task.complete = True
 
@@ -1141,6 +1518,7 @@ def command(
             ValueError,
             IndexError,
         ):
+
             say(
                 state,
                 "Use /done followed by a valid "
@@ -1152,15 +1530,22 @@ def command(
     # -----------------------------------------------------------------------
 
     elif name == "status":
+
         open_tasks = [
+
             task
+
             for task in state.tasks
+
             if not task.complete
         ]
 
         next_task = (
+
             open_tasks[0].text
+
             if open_tasks
+
             else "nothing — your slate is clear"
         )
 
@@ -1176,6 +1561,7 @@ def command(
     # -----------------------------------------------------------------------
 
     elif name == "clear":
+
         state.chat.clear()
 
         store.save(state)
@@ -1191,6 +1577,7 @@ def command(
     # -----------------------------------------------------------------------
 
     elif name == "listen":
+
         say(
             state,
             "Voice mode activated. I'm listening.",
@@ -1200,6 +1587,7 @@ def command(
             state,
             store,
         ):
+
             return False
 
     # -----------------------------------------------------------------------
@@ -1207,15 +1595,19 @@ def command(
     # -----------------------------------------------------------------------
 
     elif name == "speak":
+
         if argument.lower() not in {
             "on",
             "off",
         }:
+
             say(
                 state,
                 "Use /speak on or /speak off.",
             )
+
         else:
+
             state.speak = (
                 argument.lower() == "on"
             )
@@ -1233,6 +1625,7 @@ def command(
     # -----------------------------------------------------------------------
 
     else:
+
         say(
             state,
             "Unknown command. Type /help for the list.",
@@ -1252,27 +1645,58 @@ def chat(
 ) -> None:
 
     # -----------------------------------------------------------------------
+    # GMAIL
+    # -----------------------------------------------------------------------
+
+    normalized_message = message.lower().strip(
+        " .?!"
+    )
+
+    if normalized_message in {
+        "open gmail",
+        "open my gmail",
+        "gmail",
+        "open email",
+        "open my email",
+    }:
+
+        open_gmail()
+
+        say(
+            state,
+            "Opening Gmail.",
+        )
+
+        return
+
+    # -----------------------------------------------------------------------
     # TIME
     # -----------------------------------------------------------------------
 
     if TIME_REQUEST.match(message):
+
         say(
             state,
             current_time_reply(),
         )
+
         return
 
     # -----------------------------------------------------------------------
     # DATE
     # -----------------------------------------------------------------------
 
-    date_reply = date_day_reply(message)
+    date_reply = date_day_reply(
+        message
+    )
 
     if date_reply:
+
         say(
             state,
             date_reply,
         )
+
         return
 
     # -----------------------------------------------------------------------
@@ -1284,9 +1708,11 @@ def chat(
     )
 
     if spoken_event:
+
         title, event_date, event_time = spoken_event.groups()
 
         try:
+
             event = local_calendar.add_event(
                 title,
                 f"{event_date} {event_time}",
@@ -1296,12 +1722,14 @@ def chat(
             RuntimeError,
             ValueError,
         ) as error:
+
             say(
                 state,
                 str(error),
             )
 
         else:
+
             say(
                 state,
                 f"Added event {event.id}: "
@@ -1319,20 +1747,25 @@ def chat(
     )
 
     if spoken_available:
+
         event_date, event_time = spoken_available.groups()
 
         try:
+
             start = local_calendar.parse_datetime(
                 f"{event_date} {event_time}"
             )
 
             if local_calendar.is_available(start):
+
                 say(
                     state,
                     "You're free at "
                     f"{start.strftime('%d %B %Y at %I:%M %p').lstrip('0')}.",
                 )
+
             else:
+
                 say(
                     state,
                     "You're already booked at "
@@ -1340,6 +1773,7 @@ def chat(
                 )
 
         except ValueError as error:
+
             say(
                 state,
                 str(error),
@@ -1356,25 +1790,34 @@ def chat(
     )
 
     if spoken_free:
+
         event_date = spoken_free.group(1)
 
         try:
+
             slots = local_calendar.free_slots(
                 event_date
             )
 
             if not slots:
+
                 say(
                     state,
                     "No free hourly slots found "
                     "between 9 AM and 6 PM.",
                 )
+
             else:
+
                 formatted = "\n".join(
+
                     datetime.strptime(
                         slot,
                         "%Y-%m-%d %H:%M",
-                    ).strftime("%I:%M %p").lstrip("0")
+                    ).strftime(
+                        "%I:%M %p"
+                    ).lstrip("0")
+
                     for slot in slots
                 )
 
@@ -1384,6 +1827,7 @@ def chat(
                 )
 
         except ValueError as error:
+
             say(
                 state,
                 str(error),
@@ -1400,17 +1844,16 @@ def chat(
     )
 
     if spoken_cancel:
-        raw_ids = spoken_cancel.group(1).strip()
+
+        raw_ids = spoken_cancel.group(
+            1
+        ).strip()
 
         normalized_cancel = re.sub(
             r"\s+",
             " ",
             raw_ids.lower(),
         )
-
-        # ---------------------------------------------------------------
-        # CANCEL ALL EVENTS
-        # ---------------------------------------------------------------
 
         all_event_phrases = {
             "all",
@@ -1428,30 +1871,36 @@ def chat(
         }
 
         if normalized_cancel in all_event_phrases:
+
             try:
+
                 events = local_calendar.upcoming()
 
             except RuntimeError as error:
+
                 say(
                     state,
                     str(error),
                 )
+
                 return
 
             if not events:
+
                 say(
                     state,
                     "Your calendar is already clear.",
                 )
+
                 return
 
             cancelled = []
             failed = []
 
-            # Make a copy so we don't depend on the list changing
-            # while events are being removed.
             for event in list(events):
+
                 try:
+
                     cancelled_event = local_calendar.cancel_event(
                         event.id
                     )
@@ -1465,22 +1914,21 @@ def chat(
                     RuntimeError,
                     ValueError,
                 ):
+
                     failed.append(
                         f"{event.id}: {event.title}"
                     )
 
-            # -----------------------------------------------------------
-            # RESULT
-            # -----------------------------------------------------------
-
             if cancelled and not failed:
+
                 say(
                     state,
-                    f"Cancelled all {len(cancelled)} upcoming "
-                    f"event(s).",
+                    f"Cancelled all {len(cancelled)} "
+                    f"upcoming event(s).",
                 )
 
             elif cancelled and failed:
+
                 say(
                     state,
                     f"Cancelled {len(cancelled)} event(s). "
@@ -1488,6 +1936,7 @@ def chat(
                 )
 
             else:
+
                 say(
                     state,
                     "I couldn't cancel any of the upcoming events.",
@@ -1495,25 +1944,24 @@ def chat(
 
             return
 
-        # ---------------------------------------------------------------
-        # CANCEL SPECIFIC EVENT IDS
-        # ---------------------------------------------------------------
-
         numbers = re.findall(
             r"\d+",
             raw_ids,
         )
 
         if not numbers:
+
             say(
                 state,
                 "Tell me which event numbers to cancel.",
             )
+
             return
 
         event_ids: list[int] = []
 
         for number in numbers:
+
             event_id = int(number)
 
             if event_id not in event_ids:
@@ -1523,7 +1971,9 @@ def chat(
         failed = []
 
         for event_id in event_ids:
+
             try:
+
                 event = local_calendar.cancel_event(
                     event_id
                 )
@@ -1536,22 +1986,22 @@ def chat(
                 RuntimeError,
                 ValueError,
             ):
+
                 failed.append(
                     str(event_id)
                 )
 
-        # ---------------------------------------------------------------
-        # SPECIFIC EVENT RESULT
-        # ---------------------------------------------------------------
-
         if cancelled and not failed:
 
             if len(cancelled) == 1:
+
                 say(
                     state,
                     f"Cancelled event {cancelled[0]}.",
                 )
+
             else:
+
                 say(
                     state,
                     "Cancelled events: "
@@ -1560,6 +2010,7 @@ def chat(
                 )
 
         elif cancelled and failed:
+
             say(
                 state,
                 "Cancelled: "
@@ -1570,6 +2021,7 @@ def chat(
             )
 
         else:
+
             say(
                 state,
                 "I couldn't find event(s): "
@@ -1583,13 +2035,10 @@ def chat(
     # SPOKEN CALENDAR: LIST CALENDAR
     # -----------------------------------------------------------------------
 
-    normalized_message = (
-        message.lower()
-        .strip(" .?!")
-    )
-
     if normalized_message in CALENDAR_LIST_COMMANDS:
+
         try:
+
             say(
                 state,
                 format_calendar(
@@ -1598,6 +2047,7 @@ def chat(
             )
 
         except RuntimeError as error:
+
             say(
                 state,
                 str(error),
@@ -1609,23 +2059,31 @@ def chat(
     # NORMAL SEARCH
     # -----------------------------------------------------------------------
 
-    query = search_query(message)
+    query = search_query(
+        message
+    )
 
     if query:
+
         try:
-            browser_search(query)
+
+            browser_search(
+                query
+            )
 
         except (
             FileNotFoundError,
             OSError,
             ValueError,
         ) as error:
+
             say(
                 state,
                 f"I couldn't open Chrome: {error}",
             )
 
         else:
+
             say(
                 state,
                 f"Searching Google for {query}.",
@@ -1646,6 +2104,7 @@ def chat(
     )
 
     if not ollama_model and not api_key:
+
         say(
             state,
             "My language model is not connected yet. "
@@ -1653,14 +2112,19 @@ def chat(
             "then restart me. My local commands already work — "
             "type /help.",
         )
+
         return
 
     try:
+
         client = (
+
             OllamaClient(
                 ollama_model or DEFAULT_OLLAMA_MODEL
             )
+
             if ollama_model
+
             else OpenAIClient(
                 api_key,
                 os.getenv(
@@ -1676,17 +2140,21 @@ def chat(
         )
 
     except KeyboardInterrupt:
+
         say(
             state,
             "Cancelled. I'm still here.",
         )
+
         return
 
     except RuntimeError as error:
+
         say(
             state,
             str(error),
         )
+
         return
 
     state.chat.extend(
@@ -1702,7 +2170,9 @@ def chat(
         ]
     )
 
-    store.save(state)
+    store.save(
+        state
+    )
 
     say(
         state,
@@ -1715,6 +2185,7 @@ def chat(
 # ---------------------------------------------------------------------------
 
 def main() -> None:
+
     load_env_file()
 
     store = StateStore()
@@ -1727,27 +2198,40 @@ def main() -> None:
     # Do not carry old model replies into a new session.
     state.chat.clear()
 
-    store.save(state)
+    store.save(
+        state
+    )
 
-    print("\n" + "═" * 58)
+    print(
+        "\n" + "═" * 58
+    )
+
     print(
         "  K E V I N  ·  personal command-line assistant"
     )
-    print("═" * 58)
+
+    print(
+        "═" * 58
+    )
 
     # -----------------------------------------------------------------------
     # OWNER SETUP
     # -----------------------------------------------------------------------
 
     if not state.owner:
+
         state.owner = (
+
             input(
                 "KEVIN: Before we begin, what's your name?\nYOU: "
             ).strip()
+
             or "friend"
         )
 
-        store.save(state)
+        store.save(
+            state
+        )
 
     # -----------------------------------------------------------------------
     # START VOICE MODE
@@ -1763,6 +2247,7 @@ def main() -> None:
         state,
         store,
     ):
+
         return
 
     # -----------------------------------------------------------------------
@@ -1770,7 +2255,9 @@ def main() -> None:
     # -----------------------------------------------------------------------
 
     while True:
+
         try:
+
             raw = input(
                 "YOU: "
             ).strip()
@@ -1779,6 +2266,7 @@ def main() -> None:
             EOFError,
             KeyboardInterrupt,
         ):
+
             print()
 
             say(
@@ -1801,10 +2289,12 @@ def main() -> None:
         # ---------------------------------------------------------------
 
         if typed_command in APP_STOP_COMMANDS:
+
             say(
                 state,
                 "Stopping now.",
             )
+
             break
 
         # ---------------------------------------------------------------
@@ -1812,6 +2302,7 @@ def main() -> None:
         # ---------------------------------------------------------------
 
         if typed_command in VOICE_START_COMMANDS:
+
             say(
                 state,
                 "Voice mode activated. I'm listening.",
@@ -1821,6 +2312,7 @@ def main() -> None:
                 state,
                 store,
             ):
+
                 break
 
             continue
@@ -1830,11 +2322,13 @@ def main() -> None:
         # ---------------------------------------------------------------
 
         if raw.startswith("/"):
+
             if not command(
                 state,
                 store,
                 raw,
             ):
+
                 break
 
         # ---------------------------------------------------------------
@@ -1842,6 +2336,7 @@ def main() -> None:
         # ---------------------------------------------------------------
 
         else:
+
             chat(
                 state,
                 store,
